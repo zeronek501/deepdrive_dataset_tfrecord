@@ -10,6 +10,8 @@ def int64_feature(value):
 def bytes_feature(value):
     if not isinstance(value, (list, tuple)):
         value = [value]
+    value = [bytes(val, 'utf-8') if isinstance(val, str) else val for val in value]
+
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
 
 

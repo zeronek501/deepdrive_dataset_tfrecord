@@ -3,16 +3,17 @@ import os
 import re
 import json
 from os.path import expanduser
+import pdb
 
 import zipfile
 import datetime
 import tensorflow as tf
 import numpy as np
 
-from utils import mkdir_p
-from deepdrive_dataset_download import DeepdriveDatasetDownload
-from deepdrive_versions import DEEPDRIVE_LABELS
-from tf_features import *
+from deepdrive_dataset.utils import mkdir_p
+from deepdrive_dataset.deepdrive_dataset_download import DeepdriveDatasetDownload
+from deepdrive_dataset.deepdrive_versions import DEEPDRIVE_LABELS
+from deepdrive_dataset.tf_features import *
 from PIL import Image
 
 
@@ -20,6 +21,7 @@ class DeepdriveDatasetWriter(object):
     feature_dict = {
         'image/height': None,
         'image/width': None,
+        'image/shape': None,
         'image/object/bbox/id': None,
         'image/object/bbox/xmin': None,
         'image/object/bbox/xmax': None,
@@ -50,13 +52,14 @@ class DeepdriveDatasetWriter(object):
         if type == 'reading_shape':
             obj['image/height'] = tf.FixedLenFeature((), tf.int64, 1)
             obj['image/width'] = tf.FixedLenFeature((), tf.int64, 1)
+            obj['image/shape'] = tf.FixedLenFeature([3], tf.int64)
             obj['image/object/bbox/id'] = tf.VarLenFeature(tf.int64)
             obj['image/object/bbox/xmin'] = tf.VarLenFeature(tf.float32)
             obj['image/object/bbox/xmax'] = tf.VarLenFeature(tf.float32)
             obj['image/object/bbox/ymin'] = tf.VarLenFeature(tf.float32)
             obj['image/object/bbox/ymax'] = tf.VarLenFeature(tf.float32)
-            obj['image/object/bbox/truncated'] = tf.VarLenFeature(tf.string)
-            obj['image/object/bbox/occluded'] = tf.VarLenFeature(tf.string)
+            obj['image/object/bbox/truncated'] = tf.VarLenFeature(tf.int64)
+            obj['image/object/bbox/occluded'] = tf.VarLenFeature(tf.int64)
             obj['image/encoded'] = tf.FixedLenFeature((), tf.string, default_value='')
             obj['image/format'] = tf.FixedLenFeature((), tf.string, default_value='')
             obj['image/filename'] = tf.FixedLenFeature((), tf.string, default_value='')
@@ -68,7 +71,7 @@ class DeepdriveDatasetWriter(object):
         return obj
 
     def __init__(self):
-        self.input_path = os.path.join(expanduser('~'), '.deepdrive')
+        self.input_path = os.path.join('/content', 'BDD')
 
     def unzip_file_to_folder(self, filename, folder, remove_file_after_creating=True):
         assert (os.path.exists(filename) and os.path.isfile(filename))
@@ -99,7 +102,8 @@ class DeepdriveDatasetWriter(object):
         if not os.path.exists(expansion_labels_folder):
             mkdir_p(expansion_labels_folder)
 
-        full_labels_path = os.path.join(expansion_labels_folder, 'bdd100k', 'labels', '100k')
+        #full_labels_path = os.path.join(expansion_labels_folder, 'bdd100k', 'labels', '100k')
+        full_labels_path = os.path.join(expansion_labels_folder, 'bdd100k', 'labels')
         full_images_path = os.path.join(expansion_images_folder, 'bdd100k', 'images')
         if version in [None, '100k']:
             full_images_path = os.path.join(full_images_path, '100k', fold_type)
@@ -149,6 +153,8 @@ class DeepdriveDatasetWriter(object):
 
         if fold_type == 'test':
             return full_images_path, None, True
+
+        #pdb.set_trace()
         return full_images_path, full_labels_path, valid_folder_structure_new_format
 
     def filter_boxes_from_annotation(self, annotations):
@@ -184,9 +190,8 @@ class DeepdriveDatasetWriter(object):
                 ymax.append(obj['box2d']['y2'])
                 label.append(obj['category'])
                 label_id.append(DEEPDRIVE_LABELS.index(obj['category']) + 1)
-
                 attributes = obj['attributes']
-                truncated.append(attributes.get('truncated', False))
+                truncated.append(attributes.get('truncated'))
                 occluded.append(attributes.get('occluded', False))
         return boxid, xmin, xmax, ymin, ymax, label_id, label, truncated, occluded
 
@@ -211,8 +216,14 @@ class DeepdriveDatasetWriter(object):
             class_label_id = DEEPDRIVE_LABELS.index(obj['category']) + 1
             label_id.append(class_label_id)
 
-            truncated.append(scene_attributes.get('truncated', False))
+            attributes = obj['attributes']
+            truncated.append(attributes.get('truncated', False))
+            occluded.append(attributes.get('occluded', False))
+            '''
+            truncated.append(scene_attributes.get('truncated'))
+            #truncated.append(scene_attributes.get('truncated', False))
             occluded.append(scene_attributes.get('occluded', False))
+            '''
         return boxid, xmin, xmax, ymin, ymax, label_id, label, truncated, occluded
 
     def _get_tf_feature_dict(self, image_id, image_path, image_format, annotations, new_format=True):
@@ -225,11 +236,18 @@ class DeepdriveDatasetWriter(object):
 
         truncated = np.asarray(truncated)
         occluded = np.asarray(occluded)
+        #pdb.set_trace()
+        #print(truncated)
 
         # convert things to bytes
         label_bytes = [tf.compat.as_bytes(l) for l in label]
+        truncated_int = [int(t) for t in truncated]
+        occluded_int = [int(o) for o in occluded]
         im = Image.open(image_path)
         image_width, image_height = im.size
+        #pdb.set_trace()
+        #image_shape = tf.convert_to_tensor([image_height, image_width, 3])
+        image_shape = [image_height, image_width, 3]
         image_filename = os.path.basename(image_path)
         image_fileid = re.search('^(.*)(\.jpg)$', image_filename).group(1)
 
@@ -238,6 +256,7 @@ class DeepdriveDatasetWriter(object):
         tmp_feat_dict['image/source_id'] = bytes_feature(image_fileid)
         tmp_feat_dict['image/height'] = int64_feature(image_height)
         tmp_feat_dict['image/width'] = int64_feature(image_width)
+        tmp_feat_dict['image/shape'] = int64_feature(image_shape)
         with open(image_path, 'rb') as f:
             tmp_feat_dict['image/encoded'] = bytes_feature(f.read())
         tmp_feat_dict['image/format'] = bytes_feature(image_format)
@@ -247,11 +266,12 @@ class DeepdriveDatasetWriter(object):
         tmp_feat_dict['image/object/bbox/xmax'] = float_feature(xmax)
         tmp_feat_dict['image/object/bbox/ymin'] = float_feature(ymin)
         tmp_feat_dict['image/object/bbox/ymax'] = float_feature(ymax)
-        tmp_feat_dict['image/object/bbox/truncated'] = bytes_feature(truncated.tobytes())
-        tmp_feat_dict['image/object/bbox/occluded'] = bytes_feature(occluded.tobytes())
+        tmp_feat_dict['image/object/bbox/truncated'] = int64_feature(truncated_int)
+        tmp_feat_dict['image/object/bbox/occluded'] = int64_feature(occluded_int)
         tmp_feat_dict['image/object/class/label/id'] = int64_feature(label_id)
         tmp_feat_dict['image/object/class/label'] = int64_feature(label_id)
         tmp_feat_dict['image/object/class/label/name'] = bytes_feature(label_bytes)
+        #pdb.set_trace()
 
         return tmp_feat_dict
 
@@ -351,6 +371,7 @@ class DeepdriveDatasetWriter(object):
             mkdir_p(output_path)
 
         full_images_path, full_labels_path, new_format = self.get_image_label_folder(fold_type, version)
+        print("new?:", new_format)
 
         obj_annotation_dict = dict()
         if new_format and fold_type != 'test':

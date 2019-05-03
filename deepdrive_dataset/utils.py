@@ -2,7 +2,6 @@ import errno
 import os
 import sys
 
-
 def mkdir_p(path):
     try:
         os.makedirs(path)

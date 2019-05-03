@@ -35,6 +35,7 @@ if __name__ == '__main__':
         images = out_dict['image']
         fig_row = int(math.ceil(images.shape[0] / 2))
         fig_col = int(math.ceil(images.shape[0] / 2))
+        print(fig_row, fig_col)
         f, axarr = plt.subplots(nrows=fig_row, ncols=fig_col)
         for im_id in range(0, images.shape[0]):
             plt.sca(axarr[im_id % 2, int(im_id/2)])

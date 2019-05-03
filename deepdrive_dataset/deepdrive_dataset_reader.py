@@ -2,11 +2,10 @@ import os
 import random
 import re
 from os.path import expanduser
-
-from deepdrive_dataset_writer import DeepdriveDatasetWriter, DeepdriveDatasetDownload
-from scope_wrapper import scope_wrapper
-from tf_features import *
-from utils import mkdir_p
+from deepdrive_dataset.deepdrive_dataset_writer import DeepdriveDatasetWriter, DeepdriveDatasetDownload
+from deepdrive_dataset.scope_wrapper import scope_wrapper
+from deepdrive_dataset.tf_features import *
+from deepdrive_dataset.utils import mkdir_p
 
 
 @scope_wrapper
@@ -14,13 +13,12 @@ def _recover_boundingboxes(features):
     """ Creates a list of boxes [(ymin,xmin, ...), ...] from features. """
     ymin = features['image/object/bbox/ymin'].values
     xmin = features['image/object/bbox/xmin'].values
-    ymax = features['image/object/bbox/ymax'].values
+    ymax = features['image/object/bbox/ymax'].valuesR
     xmax = features['image/object/bbox/xmax'].values
     return tf.transpose([ymin, xmin, ymax, xmax])
 
 
 class DeepdriveDatasetReader():
-
     def get_folders(self):
         folders = DeepdriveDatasetDownload.filter_folders(self.input_path, return_relative=True)
         for key, item in self.folders_dict.items():
@@ -46,7 +44,7 @@ class DeepdriveDatasetReader():
         self.num_chained_buffers = num_chained_buffers
         self.buffer_size = buffer_size
 
-        self.input_path = os.path.join(expanduser('~'), '.deepdrive', 'tfrecord')
+        self.input_path = os.path.join('/content', 'BDD', 'tfrecord')
         if not os.path.exists(self.input_path):
             print('TFRecord path does not exists: {0}. First create the tfrecord file.'.format(self.input_path))
             exit(-1)
@@ -98,7 +96,8 @@ class DeepdriveDatasetReader():
         image = tf.image.decode_jpeg(features['image/encoded'], channels=3)
         boundingboxes = _recover_boundingboxes(features)
 
-        image_shape = tf.convert_to_tensor([features['image/width'], features['image/height']])
+        #image_shape = tf.convert_to_tensor([features['image/width'], features['image/height']])
+        image_shape = features['image/shape']
         image_ids = features['image/id']
         box_ids = tf.cast(features['image/object/bbox/id'].values, tf.int64)
         boundingbox_labels = tf.cast(features['image/object/class/label'].values, tf.int64)
@@ -120,6 +119,7 @@ class DeepdriveDatasetReader():
 
         parser = lambda x: DeepdriveDatasetReader.parsing_boundingboxes(x)
         shape = DeepdriveDatasetReader.parsing_boundingboxes(None, 'shape')
+        print(shape)
         dataset = self.generate_dataset(
             filenames, parser, shape,
             self.parallel_reads, self.num_chained_buffers,

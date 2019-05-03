@@ -3,7 +3,7 @@ import re
 import zipfile
 from os.path import expanduser
 
-from utils import mkdir_p
+from deepdrive_dataset.utils import mkdir_p
 
 
 class DeepdriveDatasetDownload(object):
